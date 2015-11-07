@@ -76,7 +76,7 @@ NodeLink.prototype = {
 				if(isFunction(directive.template)) {
 					directive.template = directive.template(node);
 				}
-				
+
 				node.innerHTML = directive.template;
 			}
 
@@ -133,7 +133,7 @@ NodeLink.prototype = {
 				name = attr.name;
 
 				// the raw normalize attr name
-				directiveAttrName = this.normalize(name);
+				directiveAttrName = directiveName = this.normalize(name);
 
 				var _directiveName = directiveAttrName.replace(/(Start|End)$/, '');
 				if(retaliate.directiveIsMultiElement(_directiveName)) {

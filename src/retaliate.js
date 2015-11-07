@@ -93,8 +93,11 @@ retaliate.registerDirective = function(name, factory) {
 						priority: 0,
 						index: index,
 						name: name,
-						require: (directive.controller && directive.name),
 						restrict: 'EA'
+					});
+
+					defaults(directive, {
+						require: (directive.controller && directive.name)
 					});
 
 					directives.push(directive);

@@ -7,7 +7,7 @@ var createDirective = function (name, factory) {
 };
 
 var clearRegistry = function() {
-	return retaliate.clearRegistry;
+	return retaliate.clearRegistry();
 };
 
 var createNode = function(html) {
@@ -41,10 +41,12 @@ describe('retaliate.compile()', function() {
 	it('should compile a multi element directive', function() {
 		var link = jasmine.createSpy();
 
-		node = createNode('<div multi-directive-start></div>' + 
-											'<span></span>' +
-											'<div multi-directive-end></div>' +
-											'<div></div>');
+		node = createNode(
+			'<div multi-directive-start></div>' + 
+			'<span></span>' +
+			'<div multi-directive-end></div>' +
+			'<div></div>'
+		);
 
 		createDirective('multiDirective', function() {
 			return {
@@ -61,6 +63,49 @@ describe('retaliate.compile()', function() {
 		expect(link).toHaveBeenCalledWith(childNodes);
 
 		clearRegistry();
+	});
+
+	it('should compile templated directive', function() {
+		node = createNode(
+			'<div directive-start></div>' +
+			'<div some-directive-here></div>' +
+			'<div directive-end></div>'
+		);
+
+		var directiveLink = jasmine.createSpy();
+
+		createDirective('directive', function() {
+			return {
+				multiElement: true,
+				link: function(nodes) {
+					if(!isArray(nodes)) {
+						nodes = [nodes];
+					}
+
+					forEach(nodes, function(node, i) {
+						node.setAttribute('node-index', i);
+					});
+				}
+			};
+		});
+
+		createDirective('someDirectiveHere', function() {
+			return {
+				template: '<div directive></div>'
+			};
+		});
+
+		compile(node);
+
+		expect(node.outerHTML).toEqual(
+			'<div>' +
+				'<div directive-start="" node-index="0"></div>' +
+				'<div some-directive-here="" node-index="1">' +
+					'<div directive="" node-index="0"></div>' +
+				'</div>' +
+				'<div directive-end="" node-index="2"></div>' +
+			'</div>'
+		);
 	});
 });
 
