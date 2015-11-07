@@ -12,14 +12,14 @@ function CompositeLink (nodeList) {
 }
 
 CompositeLink.prototype = {
-	execute: function() {
+	execute: function(transcludeFn) {
 		var i, nodeLink;
 		var ii = this.nodeLinks.length;
 
 		for(i = 0; i < ii; i++) {
 			nodeLink = this.nodeLinks[i];
 
-			nodeLink.execute();
+			nodeLink.execute(transcludeFn);
 		}
 
 		return this.nodeList;

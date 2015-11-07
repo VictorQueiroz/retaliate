@@ -39,6 +39,10 @@ function isObject (value) {
 	return typeof value === 'object';
 }
 
+function isString (value) {
+	return typeof value === 'string';
+}
+
 function isFunction (value) {
 	return typeof value === 'function';
 }
@@ -129,4 +133,55 @@ function lazy(callback, context) {
 	return function() {
 		return callback;
 	};
+}
+
+retaliate.prototype = {
+	__elementCache: {},
+
+	__cacheKey: '$$$rt339'
+};
+
+var elCache = retaliate.prototype.__elementCache;
+var cacheKey = retaliate.prototype.__cacheKey;
+
+function elementData(node, key, value) {
+	if(!node.hasOwnProperty(cacheKey)) {
+		node[cacheKey] = retaliate.id();
+
+		elCache[node[cacheKey]] = {};
+	}
+
+	var cache = elCache[node[cacheKey]];
+
+	if(!key) {
+		return cache;
+	}
+
+	if(!value && cache.hasOwnProperty(key)) {
+		return cache[key];
+	} else if(value) {
+		cache[key] = value;
+	}
+
+	return null;
+}
+
+function elementInheritedData(element, name, value) {
+  // if element is the document object work with the html element instead
+  // this makes $(document).scope() possible
+  if (element.nodeType == Node.DOCUMENT_NODE) {
+    element = element.documentElement;
+  }
+  var names = isArray(name) ? name : [name];
+
+  while (element) {
+    for (var i = 0, ii = names.length; i < ii; i++) {
+      if (value = elementData(element, names[i])) return value;
+    }
+
+    // If dealing with a document fragment node with a host element, and no parent, use the host
+    // element as the parent. This enables directives within a Shadow DOM or polyfilled Shadow DOM
+    // to lookup parent controllers.
+    element = element.parentNode || (element.nodeType === Node.DOCUMENT_FRAGMENT_NODE && element.host);
+  }
 }

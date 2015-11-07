@@ -1,9 +1,36 @@
+function Transclude(node) {
+	var fragment = document.createDocumentFragment();
+
+	this.node = node;
+	this.childNodes = node.childNodes;
+	this.fragment = fragment;
+
+	var childNode;
+	while((this.childNodes && this.childNodes.length)) {
+		childNode = this.node.removeChild(this.childNodes.item(0));
+		fragment.appendChild(childNode);
+	}
+}
+
+Transclude.prototype = {
+	execute: function(callback) {
+		var fragment = this.fragment;
+
+		var link = new Compile(fragment);
+
+		callback(fragment);
+
+		link();
+	}
+};
+
 function NodeLink (node) {
 	this.node = node;
 
 	this.attributes = new Attributes(node);
 	this.directives = [];
 
+	this.elementCache = {};
 	this.elementControllers = {};
 	this.controllerDirectives = {};
 
@@ -15,6 +42,7 @@ function NodeLink (node) {
 
 	this.childCompile = new Compile(node.childNodes);
 }
+
 NodeLink.prototype = {
 	/**
    * Given a node with an directive-start it collects all of the siblings until it finds
@@ -61,6 +89,8 @@ NodeLink.prototype = {
 
 		var attrStart, attrEnd;
 
+		var directiveValue, transclude;
+
 		for(i = 0; i < ii; i++) {
 			directive = this.directives[i];
 
@@ -70,6 +100,14 @@ NodeLink.prototype = {
 			// collect multiblock sections
 			if(attrStart) {
 				node = this.node = this.groupScan(attrStart, attrEnd);
+			}
+
+			if(directiveValue = directive.transclude) {
+				transclude = this.transclude = new Transclude(node);
+
+				this.transcludeFn = function() {
+					return transclude.execute.apply(transclude, arguments);
+				};
 			}
 
 			if(directive.template) {
@@ -91,18 +129,6 @@ NodeLink.prototype = {
 	},
 
 	addTextInterpolateDirective: function(text) {
-		var exp = $injector.get('$interpolate')(text);
-		var exps = exp.expressions.map(function(exp) {
-			return exp.trim();
-		});
-		
-		this.directives.push({
-			priority: 0,
-			compile: function(node) {
-				return function(scope, element, attrs) {
-				}
-			}
-		});
 	},
 
 	collect: function() {
@@ -232,11 +258,12 @@ NodeLink.prototype = {
 
 		extend(linkData, pick(directive, [
 			'require',
-			'name',
 
 			'$$start',
 			'$$end'
-		]));
+		]), {
+			directiveName: directive.name
+		});
 
 		var i, ii = preLinks.length, linkFn;
 
@@ -268,11 +295,11 @@ NodeLink.prototype = {
 
 	REQUIRE_PREFIX_REGEXP: /^(?:(\^\^?)?(\?)?(\^\^?)?)?/,
 
-	getControllers: function(directiveName, require) {
+	getControllers: function(directiveName, require, node, ctrls) {
     var value;
-    var $element = this.node;
 
-    var elementControllers = this.elementControllers;
+    var $element = node || this.node;
+    var elementControllers = ctrls || this.elementControllers;
 
     if (isString(require)) {
       var match = require.match(this.REQUIRE_PREFIX_REGEXP);
@@ -309,6 +336,14 @@ NodeLink.prototype = {
     return value || null;
 	},
 
+	elementInheritedData: function(key, value) {
+		return elementInheritedData(this.node, key, value);
+	},
+
+	elementData: function(key, value) {
+		return elementData(this.node, key, value);
+	},
+
 	controllers: function(attrs, transcludeFn) {
 		var elementControllers = this.elementControllers;
 		var controllerDirectives = this.controllerDirectives;
@@ -332,7 +367,7 @@ NodeLink.prototype = {
       elementControllers[directive.name] = controllerInstance;
 
       if (!hasElementTranscludeDirective) {
-        elementData(this.node, '$' + directive.name + 'Controller', controllerInstance.instance);
+        this.elementData('$' + directive.name + 'Controller', controllerInstance);
       }
     }
 	},
@@ -341,30 +376,15 @@ NodeLink.prototype = {
 		return new controller();
 	},
 
-	execute: function () {
+	execute: function (transcludeFn) {
 		var node 	= this.node;
 		var attrs = this.attributes;
 
 		this.controllers(attrs, noop);
 
-		var elementControllers = this.elementControllers;
-		for (i in elementControllers) {
-      controller = elementControllers[i];
-      var controllerResult = controller();
-
-      if (controllerResult !== controller.instance) {
-        // If the controller constructor has a return value, overwrite the instance
-        // from setupControllers and update the element data
-        controller.instance = controllerResult;
-        elementData(node, '$' + i + 'Controller', controllerResult);
-        if (controller === controllerForBindings) {
-          // Remove and re-install bindToController bindings
-          removeControllerBindingWatches && removeControllerBindingWatches();
-          removeControllerBindingWatches =
-            initializeDirectiveBindings(attrs, controllerResult, bindings, scopeDirective);
-        }
-      }
-    }
+		if(!this.hasOwnProperty('transcludeFn') && transcludeFn) {
+			this.transcludeFn = transcludeFn;
+		}
 
 		var i, ii, link, ctrls;
 
@@ -382,10 +402,10 @@ NodeLink.prototype = {
 			this.invokeLink(link, ctrls);
 		}
 
-		this.childNodes = this.childCompile();
+		this.childNodes = this.childCompile(this.transcludeFn);
 	},
 
 	invokeLink: function(link, ctrls) {
-		return link.call(null, this.node, this.attributes, ctrls, noop);
+		return link.call(null, this.node, this.attributes, ctrls, this.transcludeFn);
 	}
 };

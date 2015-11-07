@@ -77,7 +77,7 @@ describe('retaliate.compile()', function() {
 		createDirective('directive', function() {
 			return {
 				multiElement: true,
-				link: function(nodes) {
+				link: function(nodes, attrs, ctrls, transclude) {
 					if(!isArray(nodes)) {
 						nodes = [nodes];
 					}
@@ -106,6 +106,248 @@ describe('retaliate.compile()', function() {
 				'<div directive-end="" node-index="2"></div>' +
 			'</div>'
 		);
+
+		clearRegistry();
+	});
+
+	describe('Controller', function() {
+		var NavbarController;
+
+		beforeEach(function() {
+			NavbarController = function() {
+				this.status = false;
+			};
+			NavbarController.prototype = {
+				constructor: NavbarController,
+
+				setStatus: function(status) {
+					this.status = status;
+
+					return this;
+				},
+
+				toggleStatus: function() {
+					this.setStatus(!this.status);
+
+					return this;
+				}
+			};
+
+			createDirective('navbar', function() {
+				return {
+					controller: NavbarController
+				};
+			});
+		});
+
+		it('should append a controller to a directive', function() {
+			node = createNode(
+				'<div>' +
+					'<navbar>' +
+						'<controls></controls>' +
+					'</navbar>' +
+				'</div>'
+			);
+
+			var controllerSpy = jasmine.createSpy();
+			createDirective('navbar', function() {
+				return {
+					require: 'navbar',
+					link: function(el, attrs, ctrl) {
+						expect(ctrl.status).toBeFalsy();
+						ctrl.toggleStatus();
+						expect(ctrl.status).toBeTruthy();
+
+						controllerSpy(ctrl);
+					}
+				};
+			});
+
+			compile(node);
+
+			expect(controllerSpy).toHaveBeenCalled();
+		});
+
+		it('should inherit parent directive controllers', function() {
+			node = createNode(
+				'<div>' +
+					'<navbar>' +
+						'<controls></controls>' +
+					'</navbar>' +
+				'</div>'
+			);
+
+			var controllerSpy = jasmine.createSpy();
+			createDirective('controls', function() {
+				return {
+					require: '?^navbar',
+					link: function(el, attrs, navbar) {
+						navbar.setStatus(true);
+						expect(navbar.status).toBeTruthy();
+
+						navbar.toggleStatus();
+						expect(navbar.status).toBeFalsy();
+
+						controllerSpy(navbar);
+					}
+				};
+			});
+
+			compile(node);
+
+			expect(controllerSpy).toHaveBeenCalled();
+		});
+	});
+
+	describe('Transclusion', function() {
+		it('should remove all contents on normal transcluded directives', function() {
+			node = createNode(
+				'<div>' +
+					'<deep-directive>' +
+						'<p>mother</p>' +
+						'<p>father</p>' +
+						'<p>son</p>' +
+						'<p>wife</p>' +
+					'</deep-directive>' +
+				'</div>'
+			);
+
+			var transclusionSpy = jasmine.createSpy();
+			createDirective('deepDirective', function() {
+				return {
+					transclude: true
+				};
+			});
+
+			compile(node);
+
+			expect(node.querySelector('deep-directive').innerHTML).toEqual('');
+
+			clearRegistry();
+		});
+
+		it('should compile the removed content when the transclusion function gets executed', function() {
+			node = createNode(
+				'<deep-directive>' +
+					'<p>mother</p>' +
+					'<p>father</p>' +
+					'<p>son</p>' +
+					'<p>wife</p>' +
+				'</deep-directive>'
+			);
+
+			var transcludeDirectiveSpy = jasmine.createSpy();
+			createDirective('deepDirective', function() {
+				return {
+					restrict: 'E',
+					transclude: true,
+					link: function(el, attrs, ctrls, transcludeFn) {
+						transcludeFn(transcludeDirectiveSpy);
+					}
+				};
+			});
+
+			var pSpy = jasmine.createSpy();
+			createDirective('p', function(){
+				return pSpy;
+			});
+
+			compile(node);
+
+			expect(pSpy).toHaveBeenCalled();
+			expect(transcludeDirectiveSpy).toHaveBeenCalled();
+
+			clearRegistry();
+		});
+
+		it('should give the transcludeFn to child directives that has some parent directive with a transclude function', function() {
+			node = createNode(
+				'<transclude-directive>' +
+					'<div>' +
+						'This is the past of this ' +
+						'transcluded directive content' +
+					'</div>' +
+				'</transclude-directive>'
+			);
+
+			createDirective('transcludeDirective', function() {
+				return {
+					transclude: true,
+					template: '<div transclude-me></div>'
+				};
+			});
+
+			var transcludeSpy = jasmine.createSpy();
+			createDirective('transcludeMe', function() {
+				return {
+					link: function(element, attrs, ctrls, transcludeFn) {
+						if(transcludeFn) {
+							transcludeFn(function(node) {
+								transcludeSpy(node.childNodes.item().innerHTML);
+							});
+						}
+					}
+				};
+			});
+
+			compile(node);
+
+			expect(transcludeSpy).toHaveBeenCalledWith(
+				'This is the past of this ' +
+				'transcluded directive content'
+			);
+
+			clearRegistry();
+		});
+
+		it('should compile complex transcluded directives', function() {
+			node = createNode(
+				'<div>' +
+					'<some-directive>' +
+						'<span>' +
+							'Why not transclude my content too?' +
+						'</span>' +
+					'</some-directive>' +
+				'</div>' +
+				'<div>' +
+					'Right here is my content, ' +
+					'which will be wrapped somewhere!' +
+				'</div>'
+			);
+
+			createDirective('div', function() {
+				return {
+					transclude: true,
+					template: '<span wrapped transclude-it-here></span>'
+				};
+			});
+			createDirective('transcludeItHere', function() {
+				return function(el, attrs, ctrls, transclude) {
+					transclude(function(fragment) {
+						el.appendChild(fragment);
+					});
+				};
+			});
+			createDirective('someDirective', function() {
+				return {
+					transclude: true,
+					template: '<span more-wrapped transclude-it-here></span>'
+				};
+			});
+
+			compile(node);
+
+			expect(node.innerHTML).toEqual(
+				'<div><span wrapped="" transclude-it-here="">' +
+				'<some-directive><span more-wrapped="" transclude-it-here="">' +
+				'<span>Why not transclude my content too?</span></span>' +
+				'</some-directive></span></div><div>' +
+				'<span wrapped="" transclude-it-here="">Right here is my content, ' +
+				'which will be wrapped somewhere!</span></div>'
+			);
+
+			clearRegistry();
+		});
 	});
 });
 

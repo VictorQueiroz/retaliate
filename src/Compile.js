@@ -22,8 +22,8 @@ function Compile(nodeList) {
 
 	this.compositeLink = compositeLink;
 
-	return function(scope) {
-		return compositeLink.execute(scope);
+	return function(transcludeFn) {
+		return compositeLink.execute(transcludeFn);
 	};
 }
 

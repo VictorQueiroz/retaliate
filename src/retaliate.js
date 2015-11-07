@@ -2,7 +2,12 @@ var directivesRegistry = {};
 
 var retaliate = {
 	CompositeLink: CompositeLink,
-	NodeLink: NodeLink
+	NodeLink: NodeLink,
+	next_id: 0
+};
+
+retaliate.id = function() {
+	return ++retaliate.next_id;
 };
 
 retaliate.hasDirective = function(name) {
