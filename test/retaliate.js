@@ -85,7 +85,7 @@ describe('retaliate.compile()', function() {
 		clearRegistry();
 	});
 
-	xit('should compile asynchronous directives with template url', function(done) {
+	it('should compile asynchronous directives with template url', function(done) {
 		node = createNode(
 			'<special-directive></special-directive>'
 		);
@@ -95,13 +95,16 @@ describe('retaliate.compile()', function() {
 			return {
 				templateUrl: '/base/test/templates/directive-template-1.html',
 				link: function(node) {
-					console.log(node.innerHTML);
+					expect(node.innerHTML).toEqual('<div>This is my template!</div>');
+
 					done();
 				}
 			}
 		});
 
 		compile(node);
+
+		clearRegistry();
 	});
 
 	it('should compile a multi element directive', function() {
@@ -389,6 +392,10 @@ describe('retaliate.compile()', function() {
 			});
 			createDirective('transcludeItHere', function() {
 				return function(el, attrs, ctrls, transclude) {
+					if(!transclude) {
+						return;
+					}
+
 					transclude(function(fragment) {
 						el.appendChild(fragment);
 					});
@@ -416,10 +423,17 @@ describe('retaliate.compile()', function() {
 		});
 
 		it('should transclude the element itself', function() {
+			node = createNode(
+				'<div rt-repeat="n in [1,2,3,4,5]">' +
+					'<div rt-repeat="j in n">{{ j }}{{ n }}</div>' +
+				'</div>'
+			);
+
 			var transcludeSpy = jasmine.createSpy();
 			createDirective('rtRepeat', function() {
 				return {
 					transclude: 'element',
+					$$tlb: true,
 					link: function(el, attrs, ctrls, transclude) {
 						var i;
 						var endComment = document.createComment(' end rtRepeat: ' + attrs.rtRepeat + ' ');;
@@ -438,17 +452,86 @@ describe('retaliate.compile()', function() {
 				};
 			});
 
-			node = createNode(
-				'<div rt-repeat="n in [1,2,3,4,5]">' +
-					'<div rt-repeat="j in n">{{ j }}{{ n }}</div>' +
-				'</div>'
-			);
-
 			compile(node);
 
 			expect(node.querySelectorAll('[rt-repeat="j in n"]').length).toEqual(16);
 			expect(node.querySelectorAll('[rt-repeat="n in [1,2,3,4,5]"]').length).toEqual(4);
 			expect(transcludeSpy).toHaveBeenCalled();
+
+			clearRegistry();
+		});
+
+		it('should transclude a multi element directive', function() {
+			node = createNode(
+				'<div>' +
+					'<div directive-start></div>' +
+					'<span>Some important text here...</span>' +
+					'<div directive-end>' +
+						'<div>More of the important text here. <version></version></div>' +
+					'</div>' +
+				'</div>'
+			);
+
+			var DirectiveController = function() {
+				this.importantState = false;
+			};
+			inherits(DirectiveController, EventEmitter, {
+				constructor: DirectiveController,
+
+				setImportantState: function(status) {
+					this.status = status;
+					this.emit('statusUpdated');
+				}
+			});
+
+			createDirective('version', function() {
+				return function(el) {
+					el.textContent = 'v1.0.0';
+				};
+			});
+			createDirective('directive', function() {
+				return {
+					multiElement: true,
+					transclude: 'element',
+					$$tlb: true,
+					controller: DirectiveController,
+					compile: function(el) {
+						var button = document.createElement('button');
+						button.value = 'Show important';
+
+						el.parentNode.insertBefore(button, el.previousSibling);
+
+						return function(el, attrs, directiveCtrl, transclude) {
+							directiveCtrl.on('statusUpdated', function() {
+								if(this.status) {
+									transclude(function(clone) {
+										el.parentNode.insertBefore(clone, el.previousSibling);
+									});
+								}
+							});
+
+							button.addEventListener('click', function() {
+								directiveCtrl.setImportantState(true);
+							});
+						};
+					}
+				};
+			});
+
+			compile(node);
+
+			var button = node.querySelector('button');
+
+			expect(node.innerHTML).toEqual('<div><!-- directive:  --><button value="Show important"></button></div>');
+
+			button.click();
+
+			expect(node.innerHTML).toEqual(
+				'<div><!-- directive:  --><button value="Show important"></button>' +
+				'<div directive-start=""></div><span>Some important text here...</span>' +
+				'<div directive-end=""><div>More of the important text here. ' +
+				'<version>v1.0.0</version></div></div></div>'
+			);
 		});
 	});
 });

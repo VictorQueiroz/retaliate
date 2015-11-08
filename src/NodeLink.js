@@ -1,9 +1,13 @@
-function Transclude(node, type, directive, attrs) {
+function Transclude(node, directive, attrs, previousContext) {
 	this.node = node;
+	this.directive = directive;
 	this.childNodes = node.childNodes;
-	type = this.type = (isString(type) && type) || 'normal';
+	this.previousContext = previousContext;
 
-	if(type == 'normal') {
+	var type = directive.transclude;
+	type = this.type = (isString(type) && type) || 'content';
+
+	if(type == 'content') {
 		var clone = document.createDocumentFragment();
 		this.clone = clone;
 
@@ -15,18 +19,76 @@ function Transclude(node, type, directive, attrs) {
 	} else if (type == 'element') {
 		this.comment = document.createComment(' ' + directive.name + ': ' + attrs[directive.name] + ' ');
 
-		this.node.parentNode.replaceChild(this.comment, this.node);
-		this.clone = this.node.cloneNode(1);
+		if(isArray(this.node)) {
+			this.transcludeGroup();
+		} else {
+			this.transcludeElement();
+		}
 
 		this.node = node = this.comment;
 	}
 }
 
 Transclude.prototype = {
+	transcludeGroup: function() {
+		var fragment = document.createDocumentFragment();
+		var nodes = this.node = this.nodes = this.node;
+		var i, ii = nodes.length;
+
+		for(i = 0; i < ii; i++) {
+			if(i == 0) {
+				nodes[i].parentNode.replaceChild(this.comment, nodes[i]);
+			} else {
+				nodes[i].parentNode.removeChild(nodes[i]);
+			}
+
+			fragment.appendChild(nodes[i]);
+		}
+
+		this.clone = fragment;
+	},
+
+	transcludeElement: function(node) {
+		node = node || this.node;
+
+		this.node.parentNode.replaceChild(this.comment, this.node);
+		this.clone = this.node.cloneNode(1);
+	},
+
 	execute: function(callback) {
 		var clone = this.clone.cloneNode(1);
 
-		var link = new Compile(clone);
+		if(this.type == 'element' && clone instanceof DocumentFragment) {
+			var childNodesList = [];
+			var i, ii = clone.childNodes.length;
+			var node;
+
+			for(i = 0; i < ii; i++) {
+				node = clone.childNodes[i];
+
+				childNodesList.push(node.childNodes);
+			}
+
+			ii = childNodesList.length;
+			var childNodes, compileLinks = [];
+
+			for(i = 0; i < ii; i++) {
+				childNodes = childNodesList[i];
+
+				compileLinks.push(new Compile(childNodes, this.previousContext));
+			}
+
+			callback(clone);
+
+			ii = compileLinks.length;
+			for(i = 0; i < ii; i++) {
+				compileLinks[i].execute();
+			}
+
+			return clone;
+		}
+
+		var link = new Compile(clone, this.previousContext);
 
 		callback(clone);
 
@@ -34,13 +96,14 @@ Transclude.prototype = {
 	}
 };
 
-function NodeLink (node) {
+function NodeLink (node, parentNodeLinkContext) {
 	this.node = node;
 
 	this.attributes = new Attributes(node);
 	this.directives = [];
 
-	this.elementCache = {};
+	this.context = {};
+	this.parentNodeLinkContext = parentNodeLinkContext;
 	this.elementControllers = {};
 	this.controllerDirectives = {};
 
@@ -51,7 +114,10 @@ function NodeLink (node) {
 	this._apply();
 
 	this.eventEmitter = new EventEmitter();
-	this.childCompile = new Compile(node.childNodes);
+	
+	if(!this.templateUrl) {
+		this.childCompile = new Compile(node);	
+	}
 }
 
 NodeLink.prototype = {
@@ -121,7 +187,26 @@ NodeLink.prototype = {
 			}
 
 			if(directiveValue = directive.transclude) {
-				transclude = this.transclude = new Transclude(node, directive.transclude, directive, attrs);
+				var context;
+
+				// Special case ngIf and ngRepeat so that we don't complain about duplicate transclusion.
+        // This option should only be used by directives that know how to safely handle element transclusion,
+        // where the transcluded nodes are added or replaced after linking.
+        if(!directive.$$tlb) {
+        	var previousDirective = this.parentNodeLinkContext.nonTlbTranscludeDirective;
+
+        	if(this.parentNodeLinkContext.nonTlbTranscludeDirective) {
+        		throw new Error('Multiple directives, previous transclude: [' + previousDirective.name + ']');
+        	}
+
+        	this.context.nonTlbTranscludeDirective = directive;
+        }
+
+        if(directiveValue == 'element') {
+        	context = this.context;
+        }
+
+				transclude = this.transclude = new Transclude(node, directive, attrs, context);
 
 				if(directiveValue == 'element') {
 					this.node = node = this.transclude.comment;
@@ -130,6 +215,10 @@ NodeLink.prototype = {
 				this.transcludeFn = function() {
 					return transclude.execute.apply(transclude, arguments);
 				};
+			}
+
+			if(directive.templateUrl) {
+				this.templateUrl = directive.templateUrl;
 			}
 
 			if(directive.template) {
@@ -399,6 +488,26 @@ NodeLink.prototype = {
 	},
 
 	execute: function (transcludeFn) {
+		if(this.templateUrl) {
+			var self = this;
+			var node = this.node;
+
+			return request(this.templateUrl, function(template) {
+				node.innerHTML = template;
+
+				self.templateUrl = null;
+
+				// create the childCompile which will compile the
+				// child node of this node, we have not created this
+				// before, for we do not know what are the child nodes
+				// this node will have, for some of his directives has
+				// a asynchronous template data
+				self.childCompile = new Compile(node);
+
+				return self.execute(transcludeFn);
+			});
+		}
+
 		var node 	= this.node;
 		var attrs = this.attributes;
 

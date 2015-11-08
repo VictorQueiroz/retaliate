@@ -7,7 +7,7 @@ Attributes.prototype = {
 	}
 };
 
-function Compile(nodeList) {
+function Compile(nodeList, parentNodeLinkContext) {
 	if(nodeList instanceof Node === true) {
     this.node = nodeList;
 
@@ -19,8 +19,8 @@ function Compile(nodeList) {
 	}
 
 	this.nodeList = nodeList;
-
-	this.compositeLink = new CompositeLink(this.nodeList);
+  this.parentNodeLinkContext = parentNodeLinkContext || {};
+	this.compositeLink = new CompositeLink(this.nodeList, this.parentNodeLinkContext);
 }
 Compile.prototype = {
   execute: function(transcludeFn) {

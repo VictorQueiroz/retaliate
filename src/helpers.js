@@ -202,15 +202,21 @@ function inherits (ctor, superCtor, attrs) {
   }
 }
 
-function request (url, callback) {
+function request (url, successFn, errorFn) {
 	var xhr = new XMLHttpRequest();
 
+	if(!successFn) {
+		throw new Error('you must pass a success callback');
+	}
+
 	xhr.addEventListener('readystatechange', function(e) {
-		setTimeout(function() {
-			callback(xhr.responseText);
-		});
+		if(xhr.readyState == XMLHttpRequest.DONE) {
+			setTimeout(function() {
+				successFn(xhr.responseText);
+			});
+		}
 	});
 
 	xhr.open('GET', url, true);
-	xhr.send();
+	xhr.send(null);
 }

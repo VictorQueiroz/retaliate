@@ -1,11 +1,12 @@
-function CompositeLink (nodeList) {
+function CompositeLink (nodeList, parentNodeLinkContext) {
 	this.nodeList = nodeList;
 	this.nodeLinks = [];
+	this.parentNodeLinkContext = parentNodeLinkContext;
 
-	var ii = this.nodeList.length, i, node, nodeLink;
+	var i, node, nodeLink;
 
-	for(i = 0; i < ii; i++) {
-		nodeLink = new NodeLink(node = this.nodeList[i]);
+	for(i = 0; i < this.nodeList.length; i++) {
+		nodeLink 	= new NodeLink(this.nodeList[i], this.parentNodeLinkContext);
 
 		this.nodeLinks.push(nodeLink);
 	}
