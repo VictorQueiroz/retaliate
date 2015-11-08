@@ -1,5 +1,11 @@
 var compile = function(nodeList, context) {
-	return retaliate.compile(nodeList).call(context);
+	var link = retaliate.compile(nodeList);
+
+	return extend(link.execute(context), {
+		destroy: function() {
+			return link.destroy();
+		}
+	});
 };
 
 var createDirective = function (name, factory) {
@@ -36,6 +42,66 @@ describe('retaliate.compile()', function() {
 		expect(spy).toHaveBeenCalled();
 
 		clearRegistry();
+	});
+
+	it('should emit a destroy event when the node link has been destroyed', function() {
+		node = createNode(
+			'<div>' +
+				'<div>' +
+					'<button class="header"></button>' +
+				'</div>' +
+			'</div>'
+		);
+
+		var linkSpy = jasmine.createSpy();
+		var destroySpy = jasmine.createSpy();
+
+		createDirective('button', function() {
+			return function(el, attrs) {
+				var onClickFn = noop;
+
+				el.addEventListener('click', onClickFn);
+
+				this
+				.on('destroy', destroySpy)
+				.on('destroy', function() {
+					el.removeEventListener('click', onClickFn);
+				});
+
+				linkSpy();
+			};
+		});
+
+		var link = retaliate.compile(node);
+		link.execute();
+
+		expect(linkSpy).toHaveBeenCalled();
+		expect(destroySpy).not.toHaveBeenCalled();
+
+		link.destroy();
+
+		expect(destroySpy).toHaveBeenCalled();
+
+		clearRegistry();
+	});
+
+	xit('should compile asynchronous directives with template url', function(done) {
+		node = createNode(
+			'<special-directive></special-directive>'
+		);
+
+		var linkSpy = jasmine.createSpy();
+		createDirective('specialDirective', function() {
+			return {
+				templateUrl: '/base/test/templates/directive-template-1.html',
+				link: function(node) {
+					console.log(node.innerHTML);
+					done();
+				}
+			}
+		});
+
+		compile(node);
 	});
 
 	it('should compile a multi element directive', function() {
@@ -347,6 +413,42 @@ describe('retaliate.compile()', function() {
 			);
 
 			clearRegistry();
+		});
+
+		it('should transclude the element itself', function() {
+			var transcludeSpy = jasmine.createSpy();
+			createDirective('rtRepeat', function() {
+				return {
+					transclude: 'element',
+					link: function(el, attrs, ctrls, transclude) {
+						var i;
+						var endComment = document.createComment(' end rtRepeat: ' + attrs.rtRepeat + ' ');;
+
+						for(i = 0; i < 4; i++) {
+							transclude(function(clone) {
+								var end = endComment.cloneNode(0);
+
+								el.parentNode.insertBefore(clone, el.previousSibling);
+								clone.parentNode.insertBefore(end, clone.nextSibling);
+
+								transcludeSpy(clone);
+							});
+						}
+					}
+				};
+			});
+
+			node = createNode(
+				'<div rt-repeat="n in [1,2,3,4,5]">' +
+					'<div rt-repeat="j in n">{{ j }}{{ n }}</div>' +
+				'</div>'
+			);
+
+			compile(node);
+
+			expect(node.querySelectorAll('[rt-repeat="j in n"]').length).toEqual(16);
+			expect(node.querySelectorAll('[rt-repeat="n in [1,2,3,4,5]"]').length).toEqual(4);
+			expect(transcludeSpy).toHaveBeenCalled();
 		});
 	});
 });

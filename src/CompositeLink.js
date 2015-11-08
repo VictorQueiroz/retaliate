@@ -23,5 +23,16 @@ CompositeLink.prototype = {
 		}
 
 		return this.nodeList;
+	},
+
+	destroy: function() {
+		var i;
+		var ii = this.nodeLinks.length;
+
+		for(i = 0; i < ii; i++) {
+			this.nodeLinks[i].destroy();
+		}
+
+		return this;
 	}
 };

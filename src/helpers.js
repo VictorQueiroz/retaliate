@@ -185,3 +185,32 @@ function elementInheritedData(element, name, value) {
     element = element.parentNode || (element.nodeType === Node.DOCUMENT_FRAGMENT_NODE && element.host);
   }
 }
+
+function inherits (ctor, superCtor, attrs) {
+  ctor.super_ = superCtor;
+  ctor.prototype = Object.create(superCtor.prototype, {
+    constructor: {
+      value: ctor,
+      enumerable: false,
+      writable: true,
+      configurable: true
+    }
+  });
+
+  if(attrs) {
+  	extend(ctor.prototype, attrs);
+  }
+}
+
+function request (url, callback) {
+	var xhr = new XMLHttpRequest();
+
+	xhr.addEventListener('readystatechange', function(e) {
+		setTimeout(function() {
+			callback(xhr.responseText);
+		});
+	});
+
+	xhr.open('GET', url, true);
+	xhr.send();
+}

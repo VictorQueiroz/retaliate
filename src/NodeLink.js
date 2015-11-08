@@ -1,26 +1,36 @@
-function Transclude(node) {
-	var fragment = document.createDocumentFragment();
-
+function Transclude(node, type, directive, attrs) {
 	this.node = node;
 	this.childNodes = node.childNodes;
-	this.fragment = fragment;
+	type = this.type = (isString(type) && type) || 'normal';
 
-	var childNode;
-	while((this.childNodes && this.childNodes.length)) {
-		childNode = this.node.removeChild(this.childNodes.item(0));
-		fragment.appendChild(childNode);
+	if(type == 'normal') {
+		var clone = document.createDocumentFragment();
+		this.clone = clone;
+
+		var childNode;
+		while((this.childNodes && this.childNodes.length)) {
+			childNode = this.node.removeChild(this.childNodes.item(0));
+			clone.appendChild(childNode);
+		}
+	} else if (type == 'element') {
+		this.comment = document.createComment(' ' + directive.name + ': ' + attrs[directive.name] + ' ');
+
+		this.node.parentNode.replaceChild(this.comment, this.node);
+		this.clone = this.node.cloneNode(1);
+
+		this.node = node = this.comment;
 	}
 }
 
 Transclude.prototype = {
 	execute: function(callback) {
-		var fragment = this.fragment;
+		var clone = this.clone.cloneNode(1);
 
-		var link = new Compile(fragment);
+		var link = new Compile(clone);
 
-		callback(fragment);
+		callback(clone);
 
-		link();
+		link.execute();
 	}
 };
 
@@ -40,6 +50,7 @@ function NodeLink (node) {
 	this.collect();
 	this._apply();
 
+	this.eventEmitter = new EventEmitter();
 	this.childCompile = new Compile(node.childNodes);
 }
 
@@ -80,6 +91,13 @@ NodeLink.prototype = {
 		return nodes;
 	},
 
+	destroy: function() {
+		this.eventEmitter.emit('destroy');
+		this.childCompile.destroy();
+
+		return this;
+	},
+
 	_apply: function() {
 		var i, directive;
 		var ii = this.directives.length;
@@ -103,7 +121,11 @@ NodeLink.prototype = {
 			}
 
 			if(directiveValue = directive.transclude) {
-				transclude = this.transclude = new Transclude(node);
+				transclude = this.transclude = new Transclude(node, directive.transclude, directive, attrs);
+
+				if(directiveValue == 'element') {
+					this.node = node = this.transclude.comment;
+				}
 
 				this.transcludeFn = function() {
 					return transclude.execute.apply(transclude, arguments);
@@ -390,7 +412,7 @@ NodeLink.prototype = {
 
 		for(i = 0, ii = this.preLinks.length; i < ii; i++) {
 			link = this.preLinks[i];
-			ctrls = link.directive.require && this.getControllers(link.directiveName, link.require);
+			ctrls = link.require && this.getControllers(link.directiveName, link.require);
 
 			this.invokeLink(link, ctrls);
 		}
@@ -402,10 +424,10 @@ NodeLink.prototype = {
 			this.invokeLink(link, ctrls);
 		}
 
-		this.childNodes = this.childCompile(this.transcludeFn);
+		this.childNodes = this.childCompile.execute(this.transcludeFn);
 	},
 
 	invokeLink: function(link, ctrls) {
-		return link.call(null, this.node, this.attributes, ctrls, this.transcludeFn);
+		return link.call(this.eventEmitter, this.node, this.attributes, ctrls, this.transcludeFn);
 	}
 };

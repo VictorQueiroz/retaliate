@@ -1,4 +1,4 @@
-var Attributes = Compile.Attributes = function(node){
+var Attributes = function(node){
 	this.$$element = node;
 };
 
@@ -8,8 +8,10 @@ Attributes.prototype = {
 };
 
 function Compile(nodeList) {
-	if(nodeList instanceof Node) {
-		nodeList = nodeList.childNodes;
+	if(nodeList instanceof Node === true) {
+    this.node = nodeList;
+
+    nodeList = this.node.childNodes;
 	}
 
 	if(nodeList instanceof NodeList === false) {
@@ -18,13 +20,15 @@ function Compile(nodeList) {
 
 	this.nodeList = nodeList;
 
-	var compositeLink = new CompositeLink(this.nodeList);
-
-	this.compositeLink = compositeLink;
-
-	return function(transcludeFn) {
-		return compositeLink.execute(transcludeFn);
-	};
+	this.compositeLink = new CompositeLink(this.nodeList);
+}
+Compile.prototype = {
+  execute: function(transcludeFn) {
+    return this.compositeLink.execute(transcludeFn);
+  },
+  destroy: function() {
+    return this.compositeLink.destroy();
+  }
 }
 
 // Helper function to correctly set up the prototype chain for subclasses.
