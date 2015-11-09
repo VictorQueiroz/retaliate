@@ -352,7 +352,7 @@ describe('retaliate.compile()', function() {
 					link: function(element, attrs, ctrls, transcludeFn) {
 						if(transcludeFn) {
 							transcludeFn(function(node) {
-								transcludeSpy(node.childNodes.item().innerHTML);
+								transcludeSpy(node.childNodes.item(0).innerHTML);
 							});
 						}
 					}
@@ -424,8 +424,8 @@ describe('retaliate.compile()', function() {
 
 		it('should transclude the element itself', function() {
 			node = createNode(
-				'<div rt-repeat="n in [1,2,3,4,5]">' +
-					'<div rt-repeat="j in n">{{ j }}{{ n }}</div>' +
+				'<div rt-repeat="n in [1,2,3,4,5]" id="repeat-1">' +
+					'<div rt-repeat="j in n" id="repeat-2">{{ j }}{{ n }}</div>' +
 				'</div>'
 			);
 
@@ -434,6 +434,8 @@ describe('retaliate.compile()', function() {
 				return {
 					transclude: 'element',
 					$$tlb: true,
+					priority: 1000,
+			    terminal: true,
 					link: function(el, attrs, ctrls, transclude) {
 						var i;
 						var endComment = document.createComment(' end rtRepeat: ' + attrs.rtRepeat + ' ');;
@@ -454,8 +456,9 @@ describe('retaliate.compile()', function() {
 
 			compile(node);
 
-			expect(node.querySelectorAll('[rt-repeat="j in n"]').length).toEqual(16);
-			expect(node.querySelectorAll('[rt-repeat="n in [1,2,3,4,5]"]').length).toEqual(4);
+			expect(node.querySelectorAll('#repeat-1').length).toBe(4);
+			expect(node.querySelectorAll('#repeat-2').length).toBe(16);
+
 			expect(transcludeSpy).toHaveBeenCalled();
 
 			clearRegistry();
@@ -494,6 +497,8 @@ describe('retaliate.compile()', function() {
 					multiElement: true,
 					transclude: 'element',
 					$$tlb: true,
+					priority: 1000,
+			    terminal: true,
 					controller: DirectiveController,
 					compile: function(el) {
 						var button = document.createElement('button');
@@ -532,6 +537,58 @@ describe('retaliate.compile()', function() {
 				'<div directive-end=""><div>More of the important text here. ' +
 				'<version>v1.0.0</version></div></div></div>'
 			);
+
+			clearRegistry();
+		});
+
+		it('should compile the directives from a node before compile the less priority directive', function() {
+			node = createNode(
+				'<div rt-class="{ \'some-class\': true }" rt-repeat-it-start="n in [1,2,3,4]">' +
+					'{{ n }}' +
+				'</div>' +
+				'<div rt-repeat-it-end>' +
+					'{{ n * 2 }}' +
+				'</div>'
+			);
+
+			createDirective('rtClass', function() {
+				return {
+					compile: function() {
+						return function(el, attrs) {
+							var classes = JSON.parse(attrs.rtClass.replace(/\'/g, '"'));
+							var keys = Object.keys(classes);
+							var i, ii = keys.length, key, value;
+
+							for(i = 0; i < ii; i++) {
+								key = keys[i];
+								value = classes[key];
+
+								if(value) {
+									el.classList.add(key);
+								}
+							}
+						};
+					}
+				};
+			});
+			createDirective('rtRepeatIt', function() {
+				return {
+					restrict: 'A',
+			    multiElement: true,
+			    transclude: 'element',
+			    priority: 1000,
+			    terminal: true,
+			    $$tlb: true,
+			    compile: function(el) {
+			    	return function(el, attrs, ctrls, transclude) {
+			    		transclude(function(clone) {
+			    		});
+			    	}
+			    }
+				};
+			});
+
+			compile(node);
 		});
 	});
 });

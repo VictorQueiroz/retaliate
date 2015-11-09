@@ -58,43 +58,23 @@ Transclude.prototype = {
 	execute: function(callback) {
 		var clone = this.clone.cloneNode(1);
 
-		if(this.type == 'element' && clone instanceof DocumentFragment) {
-			var childNodesList = [];
-			var i, ii = clone.childNodes.length;
-			var node;
-
-			for(i = 0; i < ii; i++) {
-				node = clone.childNodes[i];
-
-				childNodesList.push(node.childNodes);
-			}
-
-			ii = childNodesList.length;
-			var childNodes, compileLinks = [];
-
-			for(i = 0; i < ii; i++) {
-				childNodes = childNodesList[i];
-
-				compileLinks.push(new Compile(childNodes, this.previousContext));
-			}
-
-			callback(clone);
-
-			ii = compileLinks.length;
-			for(i = 0; i < ii; i++) {
-				compileLinks[i].execute();
-			}
-
-			return clone;
-		}
-
-		var link = new Compile(clone, this.previousContext);
+		this.link = new Compile(clone, this.previousContext);
 
 		callback(clone);
 
-		link.execute();
+		this.link.execute();
 	}
 };
+
+/**
+ * Sorting function for bound directives.
+ */
+function byPriority(a, b) {
+  var diff = b.priority - a.priority;
+  if (diff !== 0) return diff;
+  if (a.name !== b.name) return (a.name < b.name) ? -1 : 1;
+  return a.index - b.index;
+}
 
 function NodeLink (node, parentNodeLinkContext) {
 	this.node = node;
@@ -115,7 +95,7 @@ function NodeLink (node, parentNodeLinkContext) {
 
 	this.eventEmitter = new EventEmitter();
 	
-	if(!this.templateUrl) {
+	if(!this.templateUrl && !this.terminal) {
 		this.childCompile = new Compile(node);	
 	}
 }
@@ -174,8 +154,10 @@ NodeLink.prototype = {
 		var attrStart, attrEnd;
 
 		var directiveValue, transclude;
+		var terminalPriority = -Number.MAX_VALUE;
 
-		for(i = 0; i < ii; i++) {
+		// executes all directives on the current element
+		for(i = 0; i < this.directives.length; i++) {
 			directive = this.directives[i];
 
 			attrStart = directive.$$start;
@@ -186,8 +168,14 @@ NodeLink.prototype = {
 				node = this.node = this.groupScan(attrStart, attrEnd);
 			}
 
+			// the directives that has been skipped will
+			// be loaded by a transclude function
+			if (terminalPriority > directive.priority) {
+        break; // prevent further processing of directives
+      }
+
 			if(directiveValue = directive.transclude) {
-				var context;
+				var context = {};
 
 				// Special case ngIf and ngRepeat so that we don't complain about duplicate transclusion.
         // This option should only be used by directives that know how to safely handle element transclusion,
@@ -203,7 +191,9 @@ NodeLink.prototype = {
         }
 
         if(directiveValue == 'element') {
-        	context = this.context;
+					terminalPriority = directive.priority;
+
+        	context.maxPriority = terminalPriority;
         }
 
 				transclude = this.transclude = new Transclude(node, directive, attrs, context);
@@ -234,8 +224,15 @@ NodeLink.prototype = {
 			}
 
 			if(directive.compile) {
-				this.addLink(directive, directive.compile(node, attrs));
+				this.addLink(directive, directive.compile(node, attrs), directive.terminal);
 			}
+
+			if(directive.terminal) {
+				terminalPriority = Math.max(terminalPriority, directive.priority);
+				this.terminal = true;
+			}
+
+			this.terminalPriority = terminalPriority;
 		}
 	},
 
@@ -263,7 +260,7 @@ NodeLink.prototype = {
 			break;
 		case Node.ELEMENT_NODE:
 			directiveName = this.normalize(lowercase(node.nodeName));
-			this.addDirective(directiveName, 'E');
+			this.addDirective(directiveName, 'E', null, null, this.parentNodeLinkContext);
 
 			for(i = 0; i < attributes.length; i++) {
 				attr = attributes[i];
@@ -284,10 +281,12 @@ NodeLink.prototype = {
 
 				this.attributes[directiveName] = attr.value;
 
-				this.addDirective(directiveName, 'A', attrStartName, attrEndName);
+				this.addDirective(directiveName, 'A', attrStartName, attrEndName, this.parentNodeLinkContext);
 			}
 			break;
 		}
+
+		this.directives.sort(byPriority);
 	},
 
 	normalize: function(name) {
@@ -302,12 +301,14 @@ NodeLink.prototype = {
 		return retaliate.hasDirective(name);
 	},
 
-	addDirective: function(name, restrict, startAttrName, endAttrName) {
+	addDirective: function(name, restrict, startAttrName, endAttrName, parentNodeLinkContext) {
 		var match = null;
 
 		if(!this.hasDirective(name)) {
 			return match;
 		}
+
+		var maxPriority = parentNodeLinkContext.maxPriority;
 
 		var directive;
 		var directives = this.getDirectiveInstances(name);
@@ -316,7 +317,9 @@ NodeLink.prototype = {
 		for(i = 0; i < ii; i++) {
 			directive = directives[i];
 
-			if(directive.restrict.indexOf(restrict) === -1) {
+			if(directive.restrict.indexOf(restrict) === -1 ||
+				(!isUndefined(maxPriority) &&	!(maxPriority > directive.priority))) {
+				console.log('Skipping', directive.name, directive.priority, maxPriority);
 				continue;
 			}
 
@@ -350,7 +353,7 @@ NodeLink.prototype = {
 		};
 	},
 
-	addLink: function(directive, link) {
+	addLink: function(directive, link, terminal) {
 		var postLinks = [];
 		var preLinks = [];
 
@@ -373,7 +376,8 @@ NodeLink.prototype = {
 			'$$start',
 			'$$end'
 		]), {
-			directiveName: directive.name
+			directiveName: directive.name,
+			terminal: terminal
 		});
 
 		var i, ii = preLinks.length, linkFn;
@@ -455,7 +459,7 @@ NodeLink.prototype = {
 		return elementData(this.node, key, value);
 	},
 
-	controllers: function(attrs, transcludeFn) {
+	controllers: function(attrs) {
 		var elementControllers = this.elementControllers;
 		var controllerDirectives = this.controllerDirectives;
 		var hasElementTranscludeDirective = false;
@@ -497,13 +501,6 @@ NodeLink.prototype = {
 
 				self.templateUrl = null;
 
-				// create the childCompile which will compile the
-				// child node of this node, we have not created this
-				// before, for we do not know what are the child nodes
-				// this node will have, for some of his directives has
-				// a asynchronous template data
-				self.childCompile = new Compile(node);
-
 				return self.execute(transcludeFn);
 			});
 		}
@@ -511,7 +508,7 @@ NodeLink.prototype = {
 		var node 	= this.node;
 		var attrs = this.attributes;
 
-		this.controllers(attrs, noop);
+		this.controllers(attrs);
 
 		if(!this.hasOwnProperty('transcludeFn') && transcludeFn) {
 			this.transcludeFn = transcludeFn;
@@ -525,15 +522,21 @@ NodeLink.prototype = {
 
 			this.invokeLink(link, ctrls);
 		}
+		
+		if(!this.childCompile) {
+			this.childCompile = new Compile(this.node.childNodes);
+		}
 
-		for(i = 0, ii = this.postLinks.length; i < ii; i++) {
+		this.childNodes = this.childCompile.execute(this.transcludeFn);
+
+		for(i = this.postLinks.length - 1; i >= 0; i--) {
 			link = this.postLinks[i];
 			ctrls = link.require && this.getControllers(link.directiveName, link.require);
 
 			this.invokeLink(link, ctrls);
 		}
 
-		this.childNodes = this.childCompile.execute(this.transcludeFn);
+   	delete this.parentNodeLinkContext.maxPriority;
 	},
 
 	invokeLink: function(link, ctrls) {

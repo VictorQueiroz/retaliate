@@ -20,6 +20,7 @@ function Compile(nodeList, parentNodeLinkContext) {
 
 	this.nodeList = nodeList;
   this.parentNodeLinkContext = parentNodeLinkContext || {};
+
 	this.compositeLink = new CompositeLink(this.nodeList, this.parentNodeLinkContext);
 }
 Compile.prototype = {

@@ -48,6 +48,10 @@ function isFunction (value) {
 }
 
 function pick(object, keys) {
+	if(isString(keys)) {
+		keys = [keys];
+	}
+
 	var i,
 			ii = keys.length,
 			key,
@@ -60,6 +64,18 @@ function pick(object, keys) {
 	}
 
 	return cloned;
+}
+
+function omit(object, keys) {
+	if(isString(keys)) {
+		keys = [keys];
+	}
+
+	var objectKeys = Object.keys(object).filter(function(key) {
+		return keys.indexOf(key) > -1;
+	});
+
+	return pick(object, objectKeys);
 }
 
 function extend (target) {
@@ -88,6 +104,8 @@ function extend (target) {
 			target[key] 	= value;
 		}
 	}
+
+	return target;
 }
 
 function defaults (object, source) {
@@ -172,6 +190,7 @@ function elementInheritedData(element, name, value) {
   if (element.nodeType == Node.DOCUMENT_NODE) {
     element = element.documentElement;
   }
+  
   var names = isArray(name) ? name : [name];
 
   while (element) {
