@@ -1,7 +1,8 @@
 var compile = function(nodeList, context) {
 	var link = retaliate.compile(nodeList);
+	var executed = link.execute(context) || {};
 
-	return extend(link.execute(context), {
+	return extend(executed, {
 		destroy: function() {
 			return link.destroy();
 		}
@@ -411,12 +412,13 @@ describe('retaliate.compile()', function() {
 			compile(node);
 
 			expect(node.innerHTML).toEqual(
-				'<div><span wrapped="" transclude-it-here="">' +
-				'<some-directive><span more-wrapped="" transclude-it-here="">' +
-				'<span>Why not transclude my content too?</span></span>' +
-				'</some-directive></span></div><div>' +
-				'<span wrapped="" transclude-it-here="">Right here is my content, ' +
-				'which will be wrapped somewhere!</span></div>'
+				'<span wrapped="" transclude-it-here=""><div>' +
+				'<span wrapped="" transclude-it-here=""><some-directive>' +
+				'<span more-wrapped="" transclude-it-here=""><span>' +
+				'Why not transclude my content too?</span></span>' +
+				'</some-directive></span></div><div><span wrapped="" ' +
+				'transclude-it-here="">Right here is my content, which ' +
+				'will be wrapped somewhere!</span></div></span>'
 			);
 
 			clearRegistry();
@@ -424,23 +426,45 @@ describe('retaliate.compile()', function() {
 
 		it('should transclude the element itself', function() {
 			node = createNode(
-				'<div rt-repeat="n in [1,2,3,4,5]" id="repeat-1">' +
-					'<div rt-repeat="j in n" id="repeat-2">{{ j }}{{ n }}</div>' +
+				'<div rt-repeat="n in [1,2,3,4,5]" id="repeat-1" some-ctrl>' +
+					'<div rt-repeat="j in n" id="repeat-2" some-ctrl>{{ j }}{{ n }}</div>' +
 				'</div>'
 			);
 
 			var transcludeSpy = jasmine.createSpy();
+			var id = 0;
+
+			createDirective('someCtrl', function() {
+				return {
+					controller: function() {
+						this.id = ++id;
+					},
+					require: ['someCtrl', '?^someCtrl'],
+					compile: function () {
+						return {
+							pre: function(el, attrs, ctrls) {
+								var childs = el.parentNode.querySelectorAll('[some-ctrl]');
+								el.setAttribute('data-index', childs.length);
+							}
+						};
+					}
+				};
+			});
+
 			createDirective('rtRepeat', function() {
 				return {
 					transclude: 'element',
 					$$tlb: true,
 					priority: 1000,
 			    terminal: true,
-					link: function(el, attrs, ctrls, transclude) {
-						var i;
+			    controller: function() {
+			    },
+					link: function(el, attrs, rtRepeat, transclude) {
 						var endComment = document.createComment(' end rtRepeat: ' + attrs.rtRepeat + ' ');;
 
-						for(i = 0; i < 4; i++) {
+						el.parentNode.classList.add('has-rt-repeat');
+
+						for(var i = 0; i < 4; i++) {
 							transclude(function(clone) {
 								var end = endComment.cloneNode(0);
 
@@ -456,8 +480,19 @@ describe('retaliate.compile()', function() {
 
 			compile(node);
 
+			var childRepeatChilds = node.querySelectorAll('#repeat-2');
+
 			expect(node.querySelectorAll('#repeat-1').length).toBe(4);
-			expect(node.querySelectorAll('#repeat-2').length).toBe(16);
+			expect(childRepeatChilds.length).toBe(16);
+
+			var classList, clone;
+			for(var i = 0; i < childRepeatChilds.length; i++) {
+				clone = childRepeatChilds[i];
+				classList = clone.parentNode.classList;
+
+				expect(classList.contains('has-rt-repeat')).toBeTruthy();
+				expect(clone.hasAttribute('data-index')).toBeTruthy();
+			}
 
 			expect(transcludeSpy).toHaveBeenCalled();
 

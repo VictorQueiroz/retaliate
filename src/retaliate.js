@@ -1,8 +1,6 @@
 var directivesRegistry = {};
 
 var retaliate = {
-	CompositeLink: CompositeLink,
-	NodeLink: NodeLink,
 	next_id: 0
 };
 

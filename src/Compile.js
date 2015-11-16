@@ -8,21 +8,29 @@ Attributes.prototype = {
 };
 
 function Compile(nodeList, parentNodeLinkContext) {
-	if(nodeList instanceof Node === true) {
-    this.node = nodeList;
+  var node, date = new Date().getTime();
 
-    nodeList = this.node.childNodes;
-	}
+  if(nodeList instanceof Node === true) {
+    this.node = node = nodeList;
+    nodeList = null;
+  } else if (nodeList instanceof NodeList === false) {
+    if(isArray(nodeList)) {
+      nodeList = nodeList[0];
+    } else {
+      throw new Error('invalid node');
+    }
+  }
 
-	if(nodeList instanceof NodeList === false) {
-		throw new Error('invalid node');
-	}
+	this.nodeList                = nodeList;
+  this.parentNodeLinkContext   = parentNodeLinkContext || {};
 
-	this.nodeList = nodeList;
-  this.parentNodeLinkContext = parentNodeLinkContext || {};
-
-	this.compositeLink = new CompositeLink(this.nodeList, this.parentNodeLinkContext);
+	if(node) {
+    this.compositeLink = new NodeLink(node, this.parentNodeLinkContext);
+  } else if(nodeList) {
+    this.compositeLink = new CompositeLink(this.nodeList, this.parentNodeLinkContext);
+  }
 }
+
 Compile.prototype = {
   execute: function(transcludeFn) {
     return this.compositeLink.execute(transcludeFn);
@@ -30,7 +38,7 @@ Compile.prototype = {
   destroy: function() {
     return this.compositeLink.destroy();
   }
-}
+};
 
 // Helper function to correctly set up the prototype chain for subclasses.
 // Similar to `goog.inherits`, but uses a hash of prototype properties and

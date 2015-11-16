@@ -16,9 +16,10 @@ module.exports = function(config) {
 		// list of files / patterns to load in the browser
 		files: [
 			{included: false, served: true, pattern: 'test/templates/**/*.html'},
+			'src/retaliate.js',      
+			'src/helpers.js',
 			'src/NodeLink.js',
 			'src/CompositeLink.js',
-			'src/retaliate.js',      
 			'src/**/*.js',
 			'test/**/*.js'
 		],
