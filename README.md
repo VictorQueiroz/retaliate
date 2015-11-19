@@ -6,7 +6,7 @@ bower install --save retaliate
 ```
 
 ## Usage
-```
+```js
 retaliate.registerDirective('input', function() {
 	return {
 		controller: function InputController () {
